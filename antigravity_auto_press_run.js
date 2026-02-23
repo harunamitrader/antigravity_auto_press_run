@@ -80,18 +80,32 @@ async function findAntigravityTarget() {
                 });
             });
 
-            // Antigravity の画面（index.html など）を探す
-            for (const target of targets) {
-                if (target.type === 'page' && target.webSocketDebuggerUrl) {
-                    const title = (target.title || '').toLowerCase();
-                    const url = (target.url || '').toLowerCase();
-                    // Antigravityのタブ、または関連するローカルのURL
-                    if (title.includes('antigravity') || url.includes('vscode-file://') || url.includes('localhost') || url.includes('127.0.0.1')) {
-                        log(`Found target on port ${port}: ${target.title || target.url}`);
-                        return target.webSocketDebuggerUrl;
-                    }
-                }
+            // ページ型でWebSocket URLを持つものに絞り込む
+            const pageTargets = targets.filter(t =>
+                t.type === 'page' && t.webSocketDebuggerUrl
+            );
+
+            // 1. 最優先: タイトルに 'antigravity' を含み、'launchpad' ではないもの
+            const primaryTarget = pageTargets.find(t => {
+                const title = (t.title || '').toLowerCase();
+                return title.includes('antigravity') && !title.includes('launchpad');
+            });
+            if (primaryTarget) {
+                log(`Found primary target on port ${port}: ${primaryTarget.title}`);
+                return primaryTarget.webSocketDebuggerUrl;
             }
+
+            // 2. フォールバック: vscode-file:// のURLを持ち、launchpad ではないもの
+            const fallbackTarget = pageTargets.find(t => {
+                const title = (t.title || '').toLowerCase();
+                const url = (t.url || '').toLowerCase();
+                return url.includes('vscode-file://') && !title.includes('launchpad');
+            });
+            if (fallbackTarget) {
+                log(`Found fallback target on port ${port}: ${fallbackTarget.title}`);
+                return fallbackTarget.webSocketDebuggerUrl;
+            }
+
         } catch (e) {
             // ポートが開いていない場合は無視して次へ
             continue;
