@@ -205,18 +205,32 @@ async function checkForButtons() {
     const nodeIds = queryResult.nodeIds || [];
     if (nodeIds.length === 0) return;
 
+    const EXCLUDE_KEYWORDS = ['always', '常に'];
+
     for (const nodeId of nodeIds) {
         // ボタンのテキストや属性を取得
         const outerHtmlResult = await sendCdpMessage('DOM.getOuterHTML', { nodeId });
         const html = (outerHtmlResult.outerHTML || '').toLowerCase();
 
-        // ターゲットキーワードに合致するかチェック（簡易的にHTML文字列から検索）
+        // HTMLタグを除去してテキストのみを抽出
+        const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+        // 誤爆防ぐため、除外キーワード（Always run等）が含まれる場合はスキップ
+        let isExcluded = false;
+        for (const ex of EXCLUDE_KEYWORDS) {
+            if (text.includes(ex)) {
+                isExcluded = true;
+                break;
+            }
+        }
+        if (isExcluded) continue;
+
+        // ターゲットキーワードに合致するかチェック
         let matchedKeyword = null;
         for (const kw of TARGET_KEYWORDS) {
-            // HTMLタグを除去したテキストに近い形でマッチしたいが、
-            // 今回は簡易的にouterHTML内にキーワードが含まれるか(>Allow< のように)で判定
             const lowerKw = kw.toLowerCase();
-            if (html.includes(`>${lowerKw}<`) || html.includes(`">${lowerKw}<`) || html.includes(` ${lowerKw}<`) || html.includes(`>${lowerKw} `)) {
+            // 完全一致、または「Run Alt+Enter」のように後ろにショートカットが続くケースを許容
+            if (text === lowerKw || text.startsWith(lowerKw + ' ')) {
                 matchedKeyword = kw;
                 break;
             }
