@@ -262,42 +262,39 @@ async function checkForButtons() {
             // ボタンの周囲のテキスト（文脈）を取得してログに残す
             let contextText = 'Unknown context';
             try {
-                // Runtimeを使ってJavaScriptを実行し、親要素のテキストを直接取得する
-                const resolveResult = await sendCdpMessage('DOM.resolveNode', { nodeId });
-                if (resolveResult.object && resolveResult.object.objectId) {
-                    const objectId = resolveResult.object.objectId;
-
-                    // 親要素を最大6段階遡り、80文字以上のテキストが取得できる要素を探す
-                    const evalResult = await sendCdpMessage('Runtime.callFunctionOn', {
-                        functionDeclaration: `function() {
-                            let el = this.closest('[role="dialog"], .dialog, .modal, .prompt, .notification') || this.parentElement;
-                            for (let i = 0; i < 6; i++) {
-                                if (!el || !el.parentElement) break;
-                                const t = (el.innerText || el.textContent || '').trim();
-                                if (t.length >= 80) break;
-                                el = el.parentElement;
-                            }
-                            const raw = (el.innerText || el.textContent || '').trim();
-                            // 連続空白や改行を整形して返す
-                            return raw.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
-                        }`,
-                        objectId: objectId,
-                        returnByValue: true
-                    });
-
-                    if (evalResult.result && evalResult.result.value) {
-                        let cleanContext = evalResult.result.value;
-                        // 最大500文字まで表示（より詳細に）
-                        if (cleanContext.length > 500) {
-                            cleanContext = cleanContext.substring(0, 500) + '...';
+                // Runtime.evaluate でページ内のJSを直接実行してコンテキストを取得する
+                // ボタンのテキストで検索 → 親要素を最大6段階遡り → テキストを取得
+                const kwLower = matchedKeyword.toLowerCase().replace(/"/g, '\\"');
+                const evalResult = await sendCdpMessage('Runtime.evaluate', {
+                    expression: `(function() {
+                        const allButtons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+                        const btn = allButtons.find(b => {
+                            const t = (b.innerText || b.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                            return t === "${kwLower}" || t.startsWith("${kwLower} ");
+                        });
+                        if (!btn) return '[ボタンが見つかりませんでした]';
+                        let el = btn.parentElement;
+                        for (let i = 0; i < 6; i++) {
+                            if (!el || !el.parentElement) break;
+                            const t = (el.innerText || el.textContent || '').trim();
+                            if (t.length >= 80) break;
+                            el = el.parentElement;
                         }
-                        if (cleanContext) {
-                            contextText = cleanContext;
-                        }
+                        const raw = (el ? el.innerText || el.textContent : '') || '';
+                        return raw.replace(/[ \\t]+/g, ' ').replace(/\\n{2,}/g, '\\n').trim();
+                    })()`,
+                    returnByValue: true
+                });
+
+                if (evalResult.result && evalResult.result.value) {
+                    let cleanContext = evalResult.result.value;
+                    // 最大500文字まで表示
+                    if (cleanContext.length > 500) {
+                        cleanContext = cleanContext.substring(0, 500) + '...';
                     }
-
-                    // 使い終わったオブジェクトIDを開放
-                    await sendCdpMessage('Runtime.releaseObject', { objectId }).catch(() => { });
+                    if (cleanContext) {
+                        contextText = cleanContext;
+                    }
                 }
             } catch (err) {
                 // コンテキスト取得に失敗してもクリックは継続する
