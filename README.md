@@ -112,11 +112,8 @@ npm start
 
 | 優先度 | ボタン名 |
 |--------|----------|
-| 1 | Allow Once |
-| 2 | Allow This Conversation |
-| 3 | Run |
-| 4 | Allow |
-| 5 | Approve / Yes / 実行 / 許可 / 承認 / はい |
+| 1 | Run |
+| 2 | Allow Once |
 
 `Always run` のような、他コンテキストのボタンは除外されます。
 
