@@ -1,0 +1,17 @@
+{
+  "name": "auto-accept",
+  "version": "1.0.0",
+  "main": "auto_accept.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node auto_accept.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "ws": "^8.19.0"
+  },
+  "type": "module"
+}
