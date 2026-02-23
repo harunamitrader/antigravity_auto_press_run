@@ -6,8 +6,8 @@ const POLLING_INTERVAL = 5000;
 
 // 自動クリック対象のボタンテキスト（優先順位順）
 const TARGET_KEYWORDS = [
-    'Allow This Conversation',
     'Allow Once',
+    'Allow This Conversation',
     'Run',
     'Allow',
     'Approve',
