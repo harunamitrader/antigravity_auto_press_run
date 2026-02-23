@@ -1,9 +1,8 @@
 import http from 'http';
 import WebSocket from 'ws';
 
-// 設定
 const CDP_PORTS = [9222, 9000, 9001, 9002, 9003];
-const POLLING_INTERVAL = 1000;
+const POLLING_INTERVAL = 5000;
 
 // 自動クリック対象のボタンテキスト（優先順位順）
 const TARGET_KEYWORDS = [
