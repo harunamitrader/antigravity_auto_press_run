@@ -268,12 +268,19 @@ async function checkForButtons() {
                 if (resolveResult.object && resolveResult.object.objectId) {
                     const objectId = resolveResult.object.objectId;
 
-                    // ダイアログ・モーダルなどの要素、または2階層上の親のテキストを取得するJS関数
+                    // 親要素を最大6段階遡り、80文字以上のテキストが取得できる要素を探す
                     const evalResult = await sendCdpMessage('Runtime.callFunctionOn', {
                         functionDeclaration: `function() {
-                            const container = this.closest('.dialog-container, .modal, .prompt, [role="dialog"]') || this.parentElement.parentElement || this.parentElement;
-                            let text = container.innerText || container.textContent || '';
-                            return text.replace(/\\n/g, ' ').replace(/\\s+/g, ' ').trim();
+                            let el = this.closest('[role="dialog"], .dialog, .modal, .prompt, .notification') || this.parentElement;
+                            for (let i = 0; i < 6; i++) {
+                                if (!el || !el.parentElement) break;
+                                const t = (el.innerText || el.textContent || '').trim();
+                                if (t.length >= 80) break;
+                                el = el.parentElement;
+                            }
+                            const raw = (el.innerText || el.textContent || '').trim();
+                            // 連続空白や改行を整形して返す
+                            return raw.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
                         }`,
                         objectId: objectId,
                         returnByValue: true
@@ -281,8 +288,9 @@ async function checkForButtons() {
 
                     if (evalResult.result && evalResult.result.value) {
                         let cleanContext = evalResult.result.value;
-                        if (cleanContext.length > 150) {
-                            cleanContext = cleanContext.substring(0, 150) + '...';
+                        // 最大500文字まで表示（より詳細に）
+                        if (cleanContext.length > 500) {
+                            cleanContext = cleanContext.substring(0, 500) + '...';
                         }
                         if (cleanContext) {
                             contextText = cleanContext;
@@ -297,7 +305,9 @@ async function checkForButtons() {
                 contextText = `Failed to get context: ${err.message}`;
             }
 
-            log(`[Action] Auto-clicking: "${matchedKeyword}" | [Context] ${contextText}`);
+            // 分かりやすくするためコンテキストは別行に出力
+            log(`[Action] "${matchedKeyword}" ボタンを自動クリックします`);
+            log(`  ┗ [Context]\n${contextText.split('\n').map(l => '      ' + l).join('\n')}`);
 
             // クリックイベントを発行
             await sendCdpMessage('Input.dispatchMouseEvent', {
