@@ -245,7 +245,42 @@ async function checkForButtons() {
             const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
             const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
 
-            log(`Auto-clicking button: [${matchedKeyword}] at (${Math.round(x)}, ${Math.round(y)})`);
+            // ボタンの周囲のテキスト（文脈）を取得してログに残す
+            let contextText = 'Unknown context';
+            try {
+                // ボタンの親要素のさらに親あたりからテキストを抽出を試みる
+                // （DOM階層によるが、おおよそ2〜3階層上がればメッセージが含まれるケースが多い）
+                const nodeInfo = await sendCdpMessage('DOM.describeNode', { nodeId, depth: -1 });
+                if (nodeInfo.node && nodeInfo.node.parentId) {
+                    const parent1Id = nodeInfo.node.parentId;
+                    const parent1Info = await sendCdpMessage('DOM.describeNode', { nodeId: parent1Id, depth: -1 });
+
+                    let targetContextNodeId = parent1Id;
+                    if (parent1Info.node && parent1Info.node.parentId) {
+                        targetContextNodeId = parent1Info.node.parentId; // さらに1階層上
+                    }
+
+                    const contextOuterHtmlResult = await sendCdpMessage('DOM.getOuterHTML', { nodeId: targetContextNodeId });
+                    const contextHtml = contextOuterHtmlResult.outerHTML || '';
+
+                    // タグを除去して整形
+                    let cleanContext = contextHtml.replace(/<[^>]+>/g, ' ');
+                    cleanContext = cleanContext.replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+
+                    // 長すぎる場合はカットし、自身（ボタンのテキスト）などをある程度取り除く
+                    if (cleanContext.length > 150) {
+                        cleanContext = cleanContext.substring(0, 150) + '...';
+                    }
+                    if (cleanContext) {
+                        contextText = cleanContext;
+                    }
+                }
+            } catch (err) {
+                // コンテキスト取得に失敗してもクリックは継続する
+                contextText = 'Failed to get context';
+            }
+
+            log(`[Action] Auto-clicking: "${matchedKeyword}" | [Context] ${contextText}`);
 
             // クリックイベントを発行
             await sendCdpMessage('Input.dispatchMouseEvent', {
