@@ -118,9 +118,10 @@ async function connectToAntigravity() {
 
     cdpWs.on('open', async () => {
         log('Connected to Antigravity UI!');
-        // DOMエージェントを有効化
+        // DOMエージェントとRuntimeエージェントを有効化
         try {
             await sendCdpMessage('DOM.enable');
+            await sendCdpMessage('Runtime.enable');
             startPolling();
         } catch (e) {
             log(`Failed to enable DOM: ${e.message}`);
@@ -248,36 +249,38 @@ async function checkForButtons() {
             // ボタンの周囲のテキスト（文脈）を取得してログに残す
             let contextText = 'Unknown context';
             try {
-                // ボタンの親要素のさらに親あたりからテキストを抽出を試みる
-                // （DOM階層によるが、おおよそ2〜3階層上がればメッセージが含まれるケースが多い）
-                const nodeInfo = await sendCdpMessage('DOM.describeNode', { nodeId, depth: -1 });
-                if (nodeInfo.node && nodeInfo.node.parentId) {
-                    const parent1Id = nodeInfo.node.parentId;
-                    const parent1Info = await sendCdpMessage('DOM.describeNode', { nodeId: parent1Id, depth: -1 });
+                // Runtimeを使ってJavaScriptを実行し、親要素のテキストを直接取得する
+                const resolveResult = await sendCdpMessage('DOM.resolveNode', { nodeId });
+                if (resolveResult.object && resolveResult.object.objectId) {
+                    const objectId = resolveResult.object.objectId;
 
-                    let targetContextNodeId = parent1Id;
-                    if (parent1Info.node && parent1Info.node.parentId) {
-                        targetContextNodeId = parent1Info.node.parentId; // さらに1階層上
+                    // ダイアログ・モーダルなどの要素、または2階層上の親のテキストを取得するJS関数
+                    const evalResult = await sendCdpMessage('Runtime.callFunctionOn', {
+                        functionDeclaration: `function() {
+                            const container = this.closest('.dialog-container, .modal, .prompt, [role="dialog"]') || this.parentElement.parentElement || this.parentElement;
+                            let text = container.innerText || container.textContent || '';
+                            return text.replace(/\\n/g, ' ').replace(/\\s+/g, ' ').trim();
+                        }`,
+                        objectId: objectId,
+                        returnByValue: true
+                    });
+
+                    if (evalResult.result && evalResult.result.value) {
+                        let cleanContext = evalResult.result.value;
+                        if (cleanContext.length > 150) {
+                            cleanContext = cleanContext.substring(0, 150) + '...';
+                        }
+                        if (cleanContext) {
+                            contextText = cleanContext;
+                        }
                     }
 
-                    const contextOuterHtmlResult = await sendCdpMessage('DOM.getOuterHTML', { nodeId: targetContextNodeId });
-                    const contextHtml = contextOuterHtmlResult.outerHTML || '';
-
-                    // タグを除去して整形
-                    let cleanContext = contextHtml.replace(/<[^>]+>/g, ' ');
-                    cleanContext = cleanContext.replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-
-                    // 長すぎる場合はカットし、自身（ボタンのテキスト）などをある程度取り除く
-                    if (cleanContext.length > 150) {
-                        cleanContext = cleanContext.substring(0, 150) + '...';
-                    }
-                    if (cleanContext) {
-                        contextText = cleanContext;
-                    }
+                    // 使い終わったオブジェクトIDを開放
+                    await sendCdpMessage('Runtime.releaseObject', { objectId }).catch(() => { });
                 }
             } catch (err) {
                 // コンテキスト取得に失敗してもクリックは継続する
-                contextText = 'Failed to get context';
+                contextText = `Failed to get context: ${err.message}`;
             }
 
             log(`[Action] Auto-clicking: "${matchedKeyword}" | [Context] ${contextText}`);
